@@ -1,30 +1,53 @@
 package loader
 
 import (
-	"net/url"
+	"log"
+	"os"
 	"time"
 
+	"github.com/abdheshnayak/ur-proxy/entity"
 	g "github.com/abdheshnayak/ur-proxy/global"
+	"sigs.k8s.io/yaml"
 )
 
-func loadConfigurations() {
-	// Load, add, or remove configurations as necessary
+func getConfiguration() (*entity.RoutesConfig, error) {
+
+	var config entity.RoutesConfig
+
+	b, err := os.ReadFile("./routes.yml")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := yaml.Unmarshal(b, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+
+}
+
+func loadConfigurations() error {
 	g.GCtx.Mu.Lock()
 	defer g.GCtx.Mu.Unlock()
 
-	// Example of adding a route
-	backendURL, _ := url.Parse("http://localhost:3000")
-	g.GCtx.Routes["archlinux:4000/"] = &g.RouteConfig{
-		Active:  true,
-		Backend: backendURL,
+	config, err := getConfiguration()
+	if err != nil {
+		return err
 	}
+	g.SetConfig(config)
+
+	return nil
 }
 
 func StartLoading() {
 	go func() {
 		for {
-			loadConfigurations()
-			time.Sleep(30 * time.Second)
+			if err := loadConfigurations(); err != nil {
+				log.Println(err)
+			}
+			// log.Println("loaded")
+			time.Sleep(2 * time.Second)
 		}
 	}()
 }

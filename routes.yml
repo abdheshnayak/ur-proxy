@@ -1,0 +1,11 @@
+version: v1
+routes:
+  - host: localhost:4000
+    # authUrl: http://localhost:3000/auth?method={method}&path={path}
+    paths:
+    - path: /(.*)
+      pathType: Prefix
+      backend:
+        service:
+          name: localhost
+          port: 3000

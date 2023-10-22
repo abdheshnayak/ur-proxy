@@ -1,17 +1,13 @@
 package global
 
 import (
-	"net/url"
 	"sync"
+
+	"github.com/abdheshnayak/ur-proxy/entity"
 )
 
-type RouteConfig struct {
-	Active  bool
-	Backend *url.URL
-}
-
 type GContext struct {
-	Routes map[string]*RouteConfig
+	Config entity.RoutesConfig
 	Mu     sync.RWMutex
 }
 
@@ -19,9 +15,13 @@ var (
 	GCtx = GetGContext()
 )
 
+func SetConfig(config *entity.RoutesConfig) {
+	GCtx.Config = *config
+}
+
 func GetGContext() *GContext {
 	return &GContext{
-		Routes: make(map[string]*RouteConfig),
+		Config: entity.RoutesConfig{},
 		Mu:     sync.RWMutex{},
 	}
 }
