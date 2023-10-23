@@ -1,0 +1,72 @@
+version: "3"
+
+dotenv:
+  - .secrets/env
+
+vars:
+  ImagePrefix: "ghcr.io/kloudlite/platform/apis"
+
+tasks:
+  gql:
+    dir: ./internal/app
+    cmds:
+      - go run  -tags dynamic github.com/99designs/gqlgen generate
+      # - rm "./graph/scalars.resolvers.go"
+
+  build:
+    env:
+      CGO_ENABLED: 0
+    preconditions:
+      - sh: '[ -n "{{.Out}}" ]'
+        msg: var Out must have a value
+    cmds:
+      - go build -ldflags="-s -w" -o {{.Out}}
+      - upx {{.Out}}
+
+  docker-build:
+    vars:
+      APP: ur-proxy
+      IMAGE: registry.kloudlite.io/kloudlite/{{.EnvName}}/{{.APP}}-api:{{.Tag}}
+    preconditions:
+      - sh: '[[ -n "{{.Tag}}" ]]'
+        msg: 'var Tag must have a value'
+
+      - sh: '[[ "{{.EnvName}}" == "development" ]] || [[ "{{.EnvName}}" == "staging" ]] ||  [[ "{{.EnvName}}" == "production" ]]'
+        msg: 'var EnvName must have one of [development, staging, production] as its value'
+    cmds:
+      - docker buildx build -f ./Dockerfile -t {{.IMAGE}} . --build-arg APP={{.APP}} --platform linux/amd64  --build-context project-root=../..
+      - docker push {{.IMAGE}}
+
+
+  local-build:
+    preconditions:
+      - sh: '[ -n "{{.Tag}}" ]'
+        msg: 'var Tag must have a value'
+    vars:
+      APP: ur-proxy
+      IMAGE: "{{.ImagePrefix}}/{{.APP}}:{{.Tag}}"
+      BUILDER: podman
+    silent: true
+    cmds:
+      - |+
+        tDir=$(mktemp -d)
+
+        echo "building application ..."
+        task build Out=$tDir/{{.APP}}
+
+        {{.BUILDER}} buildx build -f Containerfile.local -t {{.IMAGE}} . --build-context local-builder=${tDir} --build-arg binpath={{.APP}}
+        {{.BUILDER}} push {{.IMAGE}}
+        rm -rf $tDir
+
+  run:
+    vars:
+      Name: ur-proxy
+    dotenv:
+      - .secrets/env
+    env:
+      CGO_ENABLED: 0
+    cmds:
+      - go build -o /tmp/{{.Name}} ./main.go
+      # - dlv exec -l 127.0.0.1:31117 --headless /tmp/ur-proxy -- --dev
+      - /tmp/{{.Name}} --dev
+

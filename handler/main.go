@@ -3,13 +3,13 @@ package handler
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"regexp"
 	"strings"
 
-	g "github.com/abdheshnayak/ur-proxy/global"
+	"github.com/abdheshnayak/ur-proxy/loader"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
+	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 )
 
@@ -33,6 +33,7 @@ func checkAuth(url string, method string, path string, header *fasthttp.RequestH
 
 	err := fasthttp.Do(req, resp)
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -41,35 +42,58 @@ func checkAuth(url string, method string, path string, header *fasthttp.RequestH
 
 func HandleRequest(c *fiber.Ctx) error {
 
-	g.GCtx.Mu.RLock()
-	defer g.GCtx.Mu.RUnlock()
+	// g.GCtx.Mu.RLock()
+	// defer g.GCtx.Mu.RUnlock()
+
+	randId := uuid.New().String()
+	log.Println("processing started:", randId)
+	defer log.Println("processing ended:", randId)
 
 	hostname := c.Hostname()
 	path := c.Path()
 	method := string(c.Request().Header.Method())
 	header := &c.Request().Header
 
-	for _, rc := range g.GCtx.Config.Routes {
+	rc, err := loader.GetConfiguration()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+	}
+
+	for _, rc := range rc.Routes {
 		if rc.Host == hostname {
 			for _, hp := range rc.Paths {
 				re := regexp.MustCompile(hp.Path)
 				matched := re.MatchString(path)
+
 				if matched {
-					addr := fmt.Sprintf("http://%s:%d%s", hp.Backend.Service.Name, hp.Backend.Service.Port, path)
+					// addr := fmt.Sprintf("http://%s:%d%s", hp.Backend.Service.Name, hp.Backend.Service.Port, path)
 
 					if rc.AuthUrl != nil {
+
 						resp, err := checkAuth(*rc.AuthUrl, method, path, header)
 						if err != nil {
-							return c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
+							return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 						}
 
-						if resp.StatusCode() != http.StatusOK {
+						if resp.StatusCode() != fiber.StatusOK {
 							defer fasthttp.ReleaseResponse(resp)
-							return c.Status(resp.StatusCode()).Send(resp.Body())
+							log.Println("auth failed", resp.StatusCode())
+							resp.Header.VisitAll(func(key, value []byte) {
+								c.Response().Header.Add(string(key), string(value))
+							})
+							return c.Status(resp.StatusCode()).SendString(string(resp.Body()))
 						}
 					}
 
-					f := proxy.Forward(addr)
+					// return proxy.Do(c, addr)
+
+					f := proxy.Balancer(proxy.Config{
+						Servers: []string{
+							fmt.Sprintf("http://%s:%d", hp.Backend.Service.Name, hp.Backend.Service.Port),
+						},
+					})
+
+					// f := proxy.Forward(addr)
 					return f(c)
 				}
 			}
@@ -78,6 +102,5 @@ func HandleRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	log.Println("not found", hostname, path)
 	return c.Status(fiber.StatusNotFound).SendString("Not Found")
 }

@@ -24,7 +24,7 @@ func main() {
 
 	loader.StartLoading()
 
-	if err := app.Listen(":4000"); err != nil {
+	if err := app.Listen(":80"); err != nil {
 		panic(err)
 	}
 }

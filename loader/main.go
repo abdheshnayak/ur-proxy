@@ -3,18 +3,22 @@ package loader
 import (
 	"log"
 	"os"
-	"time"
 
 	"github.com/abdheshnayak/ur-proxy/entity"
 	g "github.com/abdheshnayak/ur-proxy/global"
 	"sigs.k8s.io/yaml"
 )
 
-func getConfiguration() (*entity.RoutesConfig, error) {
+func GetConfiguration() (*entity.RoutesConfig, error) {
 
 	var config entity.RoutesConfig
 
-	b, err := os.ReadFile("./routes.yml")
+	s := os.Getenv("CONFIG_FILE")
+	if s == "" {
+		s = "./routes.yml"
+	}
+
+	b, err := os.ReadFile(s)
 	if err != nil {
 		return nil, err
 	}
@@ -28,10 +32,7 @@ func getConfiguration() (*entity.RoutesConfig, error) {
 }
 
 func loadConfigurations() error {
-	g.GCtx.Mu.Lock()
-	defer g.GCtx.Mu.Unlock()
-
-	config, err := getConfiguration()
+	config, err := GetConfiguration()
 	if err != nil {
 		return err
 	}
@@ -42,12 +43,15 @@ func loadConfigurations() error {
 
 func StartLoading() {
 	go func() {
-		for {
-			if err := loadConfigurations(); err != nil {
-				log.Println(err)
-			}
-			// log.Println("loaded")
-			time.Sleep(2 * time.Second)
+		// for {
+		// 	// log.Println("loaded")
+		// 	time.Sleep(2 * time.Second)
+		// }
+
+		if err := loadConfigurations(); err != nil {
+			log.Println(err)
 		}
+
+		log.Println("loaded")
 	}()
 }
